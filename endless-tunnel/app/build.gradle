@@ -16,6 +16,7 @@
 
 plugins {
     id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
 }
 
 android {
@@ -24,7 +25,7 @@ android {
 
     defaultConfig {
         applicationId 'com.google.sample.tunnel'
-        minSdkVersion 14
+        minSdkVersion 19
         targetSdkVersion 33
         versionCode     1
         versionName    '1.0'
@@ -41,6 +42,9 @@ android {
                           'proguard-rules.pro'
         }
     }
+
+    buildFeatures.prefab true
+
     externalNativeBuild {
         cmake {
             path 'src/main/cpp/CMakeLists.txt'
@@ -52,3 +56,11 @@ android {
     namespace 'com.google.sample.tunnel'
 }
 
+dependencies {
+    implementation 'androidx.core:core:1.9.0'
+    implementation 'androidx.games:games-activity:1.2.2'
+
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.4.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+}

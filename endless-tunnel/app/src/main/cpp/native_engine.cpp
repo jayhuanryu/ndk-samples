@@ -100,7 +100,6 @@ bool NativeEngine::IsAnimating() {
 void NativeEngine::GameLoop() {
   mApp->userData = this;
   mApp->onAppCmd = _handle_cmd_proxy;
-  mApp->onInputEvent = _handle_input_proxy;
 
   while (1) {
     int events;

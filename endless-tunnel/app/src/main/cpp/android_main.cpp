@@ -22,6 +22,8 @@ void android_main(struct android_app* state);
 
 void android_main(struct android_app* app) {
   NativeEngine* engine = new NativeEngine(app);
+  android_app_set_key_event_filter(app, NULL);
+  android_app_set_motion_event_filter(app, NULL);
   engine->GameLoop();
   delete engine;
 }

@@ -21,7 +21,7 @@ extern "C" {
 #include <GLES2/gl2.h>
 #include <android/log.h>
 #include <android/sensor.h>
-#include <android_native_app_glue.h>
+#include <game-activity/native_app_glue/android_native_app_glue.h>
 #include <errno.h>
 #include <jni.h>
 #include <stdlib.h>
