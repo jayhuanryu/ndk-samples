@@ -119,10 +119,26 @@ void NativeEngine::GameLoop() {
       }
     }
 
+    // Process input events if there are any.
+    handle_input(mApp);
+
     if (IsAnimating()) {
       DoFrame();
     }
   }
+}
+
+int NativeEngine::handle_input(struct android_app* app) {
+  auto* engine = (struct engine*)app->userData;
+  return HandleInput(android_app_swap_input_buffers(app)) ? 1:0;
+}
+
+bool NativeEngine::HandleInput(android_input_buffer* ib) {
+  return HandleInputEvent(ib, _engine_handle_input);
+}
+
+static bool _engine_handle_input(struct CookedEvent *event) {
+  return true;
 }
 
 JNIEnv *NativeEngine::GetJniEnv() {
@@ -231,6 +247,10 @@ void NativeEngine::HandleCommand(int32_t cmd) {
         mEglContext, mEglConfig);
 }
 
+static bool _handle_event_callback(struct CookedEvent *event) {
+
+}
+
 static bool _cooked_event_callback(struct CookedEvent *event) {
   SceneManager *mgr = SceneManager::GetInstance();
   PointerCoords coords;
@@ -267,10 +287,6 @@ static bool _cooked_event_callback(struct CookedEvent *event) {
     default:
       return false;
   }
-}
-
-bool NativeEngine::HandleInput(AInputEvent *event) {
-  return CookEvent(event, _cooked_event_callback);
 }
 
 bool NativeEngine::InitDisplay() {

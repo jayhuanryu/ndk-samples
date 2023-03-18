@@ -79,7 +79,7 @@ static int _translate_keycode(int code) {
 }
 
 static void _report_key_state(int keyCode, bool state,
-                              CookedEventCallback callback) {
+                              HandledEventCallback callback) {
   bool wentDown = !_key_state[keyCode] && state;
   bool wentUp = _key_state[keyCode] && !state;
   _key_state[keyCode] = state;
@@ -98,44 +98,11 @@ static void _report_key_state(int keyCode, bool state,
 }
 
 static void _report_key_states_from_axes(float x, float y,
-                                         CookedEventCallback callback) {
+                                         HandledEventCallback callback) {
   _report_key_state(OURKEY_LEFT, x < -0.5f, callback);
   _report_key_state(OURKEY_RIGHT, x > 0.5f, callback);
   _report_key_state(OURKEY_UP, y < -0.5f, callback);
   _report_key_state(OURKEY_DOWN, y > 0.5f, callback);
-}
-
-static bool _process_keys(bool isJoy, AInputEvent *event,
-                          CookedEventCallback callback) {
-  if (AInputEvent_getType(event) == AINPUT_EVENT_TYPE_KEY) {
-    int action = AKeyEvent_getAction(event);
-    int code = _translate_keycode(AKeyEvent_getKeyCode(event));
-    bool handled = code >= 0;
-    if (code >= 0 && action == AKEY_EVENT_ACTION_DOWN) {
-      _report_key_state(code, true, callback);
-    } else if (code >= 0 && action == AKEY_EVENT_ACTION_UP) {
-      _report_key_state(code, false, callback);
-    }
-    return handled;
-  } else if (isJoy) {
-    // use joystick axes to emulate directional key events (we could leave this
-    // up to the platform, but joystick-to-dpad conversion doesn't work
-    // on NDK on older devices,  so we implement manually for maximum
-    // compatibility)
-    float x = AMotionEvent_getX(event, 0);
-    float y = AMotionEvent_getY(event, 0);
-    if (_getAxisValue) {
-      // take the hat switches into account too, so that either the
-      // regular axes or the hat axes can be used to navigate UIs
-      x += _getAxisValue(event, AXIS_HAT_X, 0);
-      y += _getAxisValue(event, AXIS_HAT_Y, 0);
-      x = Clamp(x, -1.0f, 1.0f);
-      y = Clamp(y, -1.0f, 1.0f);
-    }
-    _report_key_states_from_axes(x, y, callback);
-    return true;
-  }
-  return false;
 }
 
 static void _look_up_motion_range(int deviceId, int source, float *outMinX,
@@ -191,19 +158,41 @@ static void _look_up_motion_range(int deviceId, int source, float *outMinX,
   *outMaxY = newItem->maxY;
 }
 
-static bool CookEvent_Joy(AInputEvent *event, CookedEventCallback callback) {
+static bool CookEvent_Joy(GameActivityMotionEvent *motionEvent, HandledEventCallback callback) {
   struct CookedEvent ev;
   memset(&ev, 0, sizeof(ev));
   ev.type = COOKED_EVENT_TYPE_JOY;
-  ev.joyX = AMotionEvent_getX(event, 0);
-  ev.joyY = AMotionEvent_getY(event, 0);
-  _process_keys(true, event, callback);
+  ev.joyX = motionEvent->precisionX;
+  ev.joyY = motionEvent->precisionY;
+
+  //_process_keys(true, motionEvent, callback);
+  float x = motionEvent->precisionX;
+  float y = motionEvent->precisionY;
+  if (_getAxisValue) {
+    x += _getAxisValue(motionEvent, AXIS_HAT_X, 0);
+    y += _getAxisValue(motionEvent, AXIS_HAT_Y, 0);
+    x = Clamp(x, -1.0f, 1.0f);
+    y = Clamp(y, -1.0f, 1.0f);
+  }
+    _report_key_states_from_axes(x, y, callback);
   return callback(&ev);
 }
+static bool CookEvent_Key(GameActivityKeyEvent *keyEvent, HandledEventCallback callback) {
+    int action = keyEvent->action;
+    int code = _translate_keycode(keyEvent->keyCode);
+    bool handled = code >= 0;
+    if ( handled && action == AKEY_EVENT_ACTION_DOWN) {
+        _report_key_state(code, true, callback);
+    } else if (handled && action == AKEY_EVENT_ACTION_UP) {
+        _report_key_state(code, false, callback);
+    }
+    return handled;
+}
+static bool CookEvent_Motion(GameActivityMotionEvent *motionEvent, HandledEventCallback callback) {
+  // KeyMotionEvent : https://developer.android.com/reference/games/game-activity/struct/game-activity-motion-event
+  int src = motionEvent->source;
+  int action = motionEvent->action;
 
-static bool CookEvent_Motion(AInputEvent *event, CookedEventCallback callback) {
-  int src = AInputEvent_getSource(event);
-  int action = AMotionEvent_getAction(event);
   int actionMasked = action & AMOTION_EVENT_ACTION_MASK;
   int ptrIndex = (action & AMOTION_EVENT_ACTION_POINTER_INDEX_MASK) >>
                  AMOTION_EVENT_ACTION_POINTER_INDEX_SHIFT;
@@ -221,10 +210,10 @@ static bool CookEvent_Motion(AInputEvent *event, CookedEventCallback callback) {
     ev.type = COOKED_EVENT_TYPE_POINTER_MOVE;
   }
 
-  ev.motionPointerId = AMotionEvent_getPointerId(event, ptrIndex);
+  ev.motionPointerId = motionEvent->pointers->id;
   ev.motionIsOnScreen = (src == AINPUT_SOURCE_TOUCHSCREEN);
-  ev.motionX = AMotionEvent_getX(event, ptrIndex);
-  ev.motionY = AMotionEvent_getY(event, ptrIndex);
+  ev.motionX = motionEvent->precisionX;
+  ev.motionY = motionEvent->precisionY;
 
   if (ev.motionIsOnScreen) {
     // use screen size as the motion range
@@ -234,8 +223,8 @@ static bool CookEvent_Motion(AInputEvent *event, CookedEventCallback callback) {
     ev.motionMaxY = SceneManager::GetInstance()->GetScreenHeight();
   } else {
     // look up motion range for this device
-    _look_up_motion_range((int)AInputEvent_getDeviceId(event),
-                          (int)AInputEvent_getSource(event), &ev.motionMinX,
+    _look_up_motion_range(motionEvent->deviceId,
+                          src, &ev.motionMinX,
                           &ev.motionMaxX, &ev.motionMinY, &ev.motionMaxY);
   }
 
@@ -243,12 +232,12 @@ static bool CookEvent_Motion(AInputEvent *event, CookedEventCallback callback) {
   callback(&ev);
 
   // deliver motion info about other pointers (for multi-touch)
-  int ptrCount = AMotionEvent_getPointerCount(event);
+  int ptrCount = motionEvent->pointerCount;
   for (int i = 0; i < ptrCount; i++) {
     ev.type = COOKED_EVENT_TYPE_POINTER_MOVE;
-    ev.motionX = AMotionEvent_getX(event, i);
-    ev.motionY = AMotionEvent_getY(event, i);
-    ev.motionPointerId = AMotionEvent_getPointerId(event, i);
+    ev.motionX = motionEvent->precisionX;
+    ev.motionY = motionEvent->precisionY;
+    ev.motionPointerId = motionEvent->pointers->id;
     callback(&ev);
   }
 
@@ -258,11 +247,11 @@ static bool CookEvent_Motion(AInputEvent *event, CookedEventCallback callback) {
   return (src != SOURCE_TOUCH_NAVIGATION);
 }
 
-bool CookEvent(AInputEvent *event, CookedEventCallback callback) {
-  int type = AInputEvent_getType(event);
-  int src = AInputEvent_getSource(event);
+bool CookEvent(android_input_buffer *event, HandledEventCallback callback) {
+
+  int type = determineInputType(event); // initializing
   bool isJoy = (type == AINPUT_EVENT_TYPE_MOTION) &&
-               (src & AINPUT_SOURCE_CLASS_MASK) == SOURCE_CLASS_JOYSTICK;
+          (event->motionEvents->source & AINPUT_SOURCE_CLASS_MASK) == SOURCE_CLASS_JOYSTICK;
 
   if (!_init_done) {
     _init();
@@ -270,23 +259,28 @@ bool CookEvent(AInputEvent *event, CookedEventCallback callback) {
   }
 
   if (isJoy) {
-    return CookEvent_Joy(event, callback);
-  } else if (type == AINPUT_EVENT_TYPE_KEY) {
-    bool handled = _process_keys(false, event, callback);
-    if (AKeyEvent_getKeyCode(event) == AKEYCODE_BACK &&
-        0 == AKeyEvent_getAction(event)) {
-      // back key was pressed
-      struct CookedEvent ev;
-      memset(&ev, 0, sizeof(ev));
-      ev.type = COOKED_EVENT_TYPE_BACK;
-      return callback(&ev);
-    }
-    // Note: if you want to handle other keys, add code here. For now we only
-    // handle DPAD keys as indicated in _process_keys.
-    return handled;
-  } else if (type == AINPUT_EVENT_TYPE_MOTION) {
-    return CookEvent_Motion(event, callback);
+    return CookEvent_Joy(event->motionEvents, callback);
+  } else if (type == AINPUT_EVENT_TYPE_KEY) { // Key Event
+      int code = _translate_keycode(event->keyEvents->keyCode);
+      int action = event->keyEvents->action;
+      if (code == AKEYCODE_BACK && action == 0) {
+          struct CookedEvent ev;
+          memset(&ev, 0, sizeof(ev));
+          ev.type = COOKED_EVENT_TYPE_BACK;
+          return callback(&ev);
+      }
+      return CookEvent_Key(event->keyEvents, callback);
+  }// Motion Event
+  else if (type == AINPUT_EVENT_TYPE_MOTION) {
+    return CookEvent_Motion(event->motionEvents, callback);
   }
 
   return false;
+}
+
+int determineInputType(android_input_buffer *event) {
+  if (event->motionEventsCount > 0)
+    return AINPUT_EVENT_TYPE_MOTION;
+  else if (event->keyEventsCount > 0)
+    return AINPUT_EVENT_TYPE_KEY;
 }

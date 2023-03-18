@@ -45,7 +45,8 @@ struct CookedEvent {
   int keyCode;
 };
 
-typedef bool (*CookedEventCallback)(struct CookedEvent *event);
-bool CookEvent(AInputEvent *event, CookedEventCallback callback);
 
+typedef bool (*HandledEventCallback)(struct CookedEvent *event);
+bool HandleInputEvent(android_input_buffer *inputBuffer, HandledEventCallback callback);
+int determineInputType(android_input_buffer *event);
 #endif

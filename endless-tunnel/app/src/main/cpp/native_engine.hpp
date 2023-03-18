@@ -98,6 +98,10 @@ class NativeEngine {
 
   bool IsAnimating();
 
+
+  int handle_input(struct android_app*);
+  bool HandleInput(android_input_buffer*);
+
  public:
   // these are public for simplicity because we have internal static callbacks
   void HandleCommand(int32_t cmd);
