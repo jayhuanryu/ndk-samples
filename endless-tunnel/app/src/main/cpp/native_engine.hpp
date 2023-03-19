@@ -98,11 +98,14 @@ class NativeEngine {
 
   bool IsAnimating();
 
+  void HandleGameActivityInput();
+
+  void CheckForNewAxis();
+
 
  public:
   // these are public for simplicity because we have internal static callbacks
   void HandleCommand(int32_t cmd);
-  bool HandleInput(android_input_buffer*);
 };
 
 #endif

@@ -178,6 +178,7 @@ static bool CookEvent_Joy(GameActivityMotionEvent *motionEvent, HandledEventCall
   return callback(&ev);
 }
 static bool CookEvent_Key(GameActivityKeyEvent *keyEvent, HandledEventCallback callback) {
+
     int action = keyEvent->action;
     int code = _translate_keycode(keyEvent->keyCode);
     bool handled = code >= 0;
@@ -189,98 +190,49 @@ static bool CookEvent_Key(GameActivityKeyEvent *keyEvent, HandledEventCallback c
     return handled;
 }
 static bool CookEvent_Motion(GameActivityMotionEvent *motionEvent, HandledEventCallback callback) {
-  // KeyMotionEvent : https://developer.android.com/reference/games/game-activity/struct/game-activity-motion-event
-  int src = motionEvent->source;
-  int action = motionEvent->action;
+  if (motionEvent->pointerCount > 0) {
 
-  int actionMasked = action & AMOTION_EVENT_ACTION_MASK;
-  int ptrIndex = (action & AMOTION_EVENT_ACTION_POINTER_INDEX_MASK) >>
-                 AMOTION_EVENT_ACTION_POINTER_INDEX_SHIFT;
+    int action = motionEvent->action;
+    int actionMasked = action & AMOTION_EVENT_ACTION_MASK;
+    int ptrIndex = (action & AMOTION_EVENT_ACTION_POINTER_INDEX_MASK) >>
+                                                                      AMOTION_EVENT_ACTION_POINTER_INDEX_SHIFT;
+    if (ptrIndex < motionEvent->pointerCount) {
+      struct CookedEvent ev;
+      memset(&ev, 0, sizeof(ev));
 
-  struct CookedEvent ev;
-  memset(&ev, 0, sizeof(ev));
-
-  if (actionMasked == AMOTION_EVENT_ACTION_DOWN ||
-      actionMasked == AMOTION_EVENT_ACTION_POINTER_DOWN) {
-    ev.type = COOKED_EVENT_TYPE_POINTER_DOWN;
-  } else if (actionMasked == AMOTION_EVENT_ACTION_UP ||
-             actionMasked == AMOTION_EVENT_ACTION_POINTER_UP) {
-    ev.type = COOKED_EVENT_TYPE_POINTER_UP;
-  } else {
-    ev.type = COOKED_EVENT_TYPE_POINTER_MOVE;
-  }
-
-  ev.motionPointerId = motionEvent->pointers->id;
-  ev.motionIsOnScreen = (src == AINPUT_SOURCE_TOUCHSCREEN);
-  ev.motionX = motionEvent->precisionX;
-  ev.motionY = motionEvent->precisionY;
-
-  if (ev.motionIsOnScreen) {
-    // use screen size as the motion range
-    ev.motionMinX = 0.0f;
-    ev.motionMaxX = SceneManager::GetInstance()->GetScreenWidth();
-    ev.motionMinY = 0.0f;
-    ev.motionMaxY = SceneManager::GetInstance()->GetScreenHeight();
-  } else {
-    // look up motion range for this device
-    _look_up_motion_range(motionEvent->deviceId,
-                          src, &ev.motionMinX,
-                          &ev.motionMaxX, &ev.motionMinY, &ev.motionMaxY);
-  }
-
-  // deliver event
-  callback(&ev);
-
-  // deliver motion info about other pointers (for multi-touch)
-  int ptrCount = motionEvent->pointerCount;
-  for (int i = 0; i < ptrCount; i++) {
-    ev.type = COOKED_EVENT_TYPE_POINTER_MOVE;
-    ev.motionX = motionEvent->precisionX;
-    ev.motionY = motionEvent->precisionY;
-    ev.motionPointerId = motionEvent->pointers->id;
-    callback(&ev);
-  }
-
-  // If this is a touch-nav event, return false to indicate that we haven't
-  // handled it. This will trigger translation of swipes to DPAD keys, which is
-  // what we want. Otherwise, we say that we've handled it.
-  return (src != SOURCE_TOUCH_NAVIGATION);
-}
-
-bool CookEvent(android_input_buffer *event, HandledEventCallback callback) {
-
-  int type = determineInputType(event); // initializing
-  bool isJoy = (type == AINPUT_EVENT_TYPE_MOTION) &&
-          (event->motionEvents->source & AINPUT_SOURCE_CLASS_MASK) == SOURCE_CLASS_JOYSTICK;
-
-  if (!_init_done) {
-    _init();
-    _init_done = true;
-  }
-
-  if (isJoy) {
-    return CookEvent_Joy(event->motionEvents, callback);
-  } else if (type == AINPUT_EVENT_TYPE_KEY) { // Key Event
-      int code = _translate_keycode(event->keyEvents->keyCode);
-      int action = event->keyEvents->action;
-      if (code == AKEYCODE_BACK && action == 0) {
-          struct CookedEvent ev;
-          memset(&ev, 0, sizeof(ev));
-          ev.type = COOKED_EVENT_TYPE_BACK;
-          return callback(&ev);
+      if (actionMasked == AMOTION_EVENT_ACTION_DOWN ||
+          actionMasked == AMOTION_EVENT_ACTION_POINTER_DOWN) {
+        ev.type = COOKED_EVENT_TYPE_POINTER_DOWN;
+      } else if (actionMasked == AMOTION_EVENT_ACTION_UP ||
+                 actionMasked == AMOTION_EVENT_ACTION_POINTER_UP) {
+        ev.type = COOKED_EVENT_TYPE_POINTER_UP;
+      } else {
+        ev.type = COOKED_EVENT_TYPE_POINTER_MOVE;
       }
-      return CookEvent_Key(event->keyEvents, callback);
-  }// Motion Event
-  else if (type == AINPUT_EVENT_TYPE_MOTION) {
-    return CookEvent_Motion(event->motionEvents, callback);
-  }
 
+      ev.motionPointerId = motionEvent->pointers[ptrIndex].id;
+      ev.motionIsOnScreen = motionEvent->source == AINPUT_SOURCE_TOUCHSCREEN;
+      ev.motionX = GameActivityPointerAxes_getX(&motionEvent->pointers[ptrIndex]);
+      ev.motionY = GameActivityPointerAxes_getY(&motionEvent->pointers[ptrIndex]);
+
+      if (ev.motionIsOnScreen) {
+        // use screen size as the motion range
+        ev.motionMinX = 0.0f;
+        ev.motionMaxX = SceneManager::GetInstance()->GetScreenWidth();
+        ev.motionMinY = 0.0f;
+        ev.motionMaxY = SceneManager::GetInstance()->GetScreenHeight();
+      }
+      // deliver event
+      return callback(&ev);
+    }
+  }
   return false;
 }
 
-int determineInputType(android_input_buffer *event) {
-  if (event->motionEventsCount > 0)
-    return AINPUT_EVENT_TYPE_MOTION;
-  else if (event->keyEventsCount > 0)
-    return AINPUT_EVENT_TYPE_KEY;
+bool CookEvent(GameActivityKeyEvent* keyEvent, HandledEventCallback callback) {
+  return CookEvent_Key(keyEvent, callback);
+}
+
+bool CookEvent(GameActivityMotionEvent* motionEvent, HandledEventCallback callback) {
+  return CookEvent_Motion(motionEvent, callback);
 }

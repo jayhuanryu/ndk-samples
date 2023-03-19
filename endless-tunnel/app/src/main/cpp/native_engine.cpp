@@ -127,6 +127,35 @@ static bool _cooked_event_callback(struct CookedEvent *event) {
   }
 }
 
+void NativeEngine::HandleGameActivityInput() {
+//  CheckForNewAxis();
+
+  // Swap input bufers so we don't miss any events while processing input buffer
+  android_input_buffer* inputBuffer = android_app_swap_input_buffers(mApp);
+  // Early exit if no events.
+  if (!inputBuffer)
+    return;
+
+  // KeyEvent
+  if (inputBuffer->keyEventsCount != 0) {
+    for (uint64_t i = 0 ; i < inputBuffer->keyEventsCount; ++i) {
+      GameActivityKeyEvent* keyEvent = &inputBuffer->keyEvents[i];
+      CookEvent(keyEvent, _cooked_event_callback);
+    }
+    android_app_clear_key_events(inputBuffer);
+  }
+
+  // MotionEvent
+  if (inputBuffer->motionEventsCount != 0) {
+    for (uint64_t  i = 0 ; i < inputBuffer->motionEventsCount ; ++i) {
+      GameActivityMotionEvent* motionEvent = &inputBuffer->motionEvents[i];
+      CookEvent(motionEvent, _cooked_event_callback);
+    }
+  }
+  android_app_clear_motion_events(inputBuffer);
+}
+
+
 bool NativeEngine::IsAnimating() {
   return mHasFocus && mIsVisible && mHasWindow;
 }
@@ -154,7 +183,7 @@ void NativeEngine::GameLoop() {
     }
 
     // Process input events if there are any.
-    HandleInput(android_app_swap_input_buffers(mApp));
+    HandleGameActivityInput();
 
     if (IsAnimating()) {
       DoFrame();
@@ -162,9 +191,9 @@ void NativeEngine::GameLoop() {
   }
 }
 
-bool NativeEngine::HandleInput(android_input_buffer *event) {
-  return CookEvent(event, _cooked_event_callback);
-}
+//bool NativeEngine::HandleInput(android_input_buffer *event) {
+//    return CookEvent(event, _cooked_event_callback);
+//}
 
 JNIEnv *NativeEngine::GetJniEnv() {
   if (!mJniEnv) {
