@@ -88,9 +88,43 @@ static void _handle_cmd_proxy(struct android_app *app, int32_t cmd) {
   engine->HandleCommand(cmd);
 }
 
-static int _handle_input_proxy(struct android_app *app, AInputEvent *event) {
-  NativeEngine *engine = (NativeEngine *)app->userData;
-  return engine->HandleInput(event) ? 1 : 0;
+
+static bool _cooked_event_callback(struct CookedEvent *event) {
+  SceneManager *mgr = SceneManager::GetInstance();
+  PointerCoords coords;
+  memset(&coords, 0, sizeof(coords));
+  coords.x = event->motionX;
+  coords.y = event->motionY;
+  coords.minX = event->motionMinX;
+  coords.maxX = event->motionMaxX;
+  coords.minY = event->motionMinY;
+  coords.maxY = event->motionMaxY;
+  coords.isScreen = event->motionIsOnScreen;
+
+  switch (event->type) {
+    case COOKED_EVENT_TYPE_JOY:
+      mgr->UpdateJoy(event->joyX, event->joyY);
+          return true;
+    case COOKED_EVENT_TYPE_POINTER_DOWN:
+      mgr->OnPointerDown(event->motionPointerId, &coords);
+          return true;
+    case COOKED_EVENT_TYPE_POINTER_UP:
+      mgr->OnPointerUp(event->motionPointerId, &coords);
+          return true;
+    case COOKED_EVENT_TYPE_POINTER_MOVE:
+      mgr->OnPointerMove(event->motionPointerId, &coords);
+          return true;
+    case COOKED_EVENT_TYPE_KEY_DOWN:
+      mgr->OnKeyDown(event->keyCode);
+          return true;
+    case COOKED_EVENT_TYPE_KEY_UP:
+      mgr->OnKeyUp(event->keyCode);
+          return true;
+    case COOKED_EVENT_TYPE_BACK:
+      return mgr->OnBackKeyPressed();
+    default:
+      return false;
+  }
 }
 
 bool NativeEngine::IsAnimating() {
@@ -120,7 +154,7 @@ void NativeEngine::GameLoop() {
     }
 
     // Process input events if there are any.
-    handle_input(mApp);
+    HandleInput(android_app_swap_input_buffers(mApp));
 
     if (IsAnimating()) {
       DoFrame();
@@ -128,17 +162,8 @@ void NativeEngine::GameLoop() {
   }
 }
 
-int NativeEngine::handle_input(struct android_app* app) {
-  auto* engine = (struct engine*)app->userData;
-  return HandleInput(android_app_swap_input_buffers(app)) ? 1:0;
-}
-
-bool NativeEngine::HandleInput(android_input_buffer* ib) {
-  return HandleInputEvent(ib, _engine_handle_input);
-}
-
-static bool _engine_handle_input(struct CookedEvent *event) {
-  return true;
+bool NativeEngine::HandleInput(android_input_buffer *event) {
+  return CookEvent(event, _cooked_event_callback);
 }
 
 JNIEnv *NativeEngine::GetJniEnv() {
@@ -247,47 +272,6 @@ void NativeEngine::HandleCommand(int32_t cmd) {
         mEglContext, mEglConfig);
 }
 
-static bool _handle_event_callback(struct CookedEvent *event) {
-
-}
-
-static bool _cooked_event_callback(struct CookedEvent *event) {
-  SceneManager *mgr = SceneManager::GetInstance();
-  PointerCoords coords;
-  memset(&coords, 0, sizeof(coords));
-  coords.x = event->motionX;
-  coords.y = event->motionY;
-  coords.minX = event->motionMinX;
-  coords.maxX = event->motionMaxX;
-  coords.minY = event->motionMinY;
-  coords.maxY = event->motionMaxY;
-  coords.isScreen = event->motionIsOnScreen;
-
-  switch (event->type) {
-    case COOKED_EVENT_TYPE_JOY:
-      mgr->UpdateJoy(event->joyX, event->joyY);
-      return true;
-    case COOKED_EVENT_TYPE_POINTER_DOWN:
-      mgr->OnPointerDown(event->motionPointerId, &coords);
-      return true;
-    case COOKED_EVENT_TYPE_POINTER_UP:
-      mgr->OnPointerUp(event->motionPointerId, &coords);
-      return true;
-    case COOKED_EVENT_TYPE_POINTER_MOVE:
-      mgr->OnPointerMove(event->motionPointerId, &coords);
-      return true;
-    case COOKED_EVENT_TYPE_KEY_DOWN:
-      mgr->OnKeyDown(event->keyCode);
-      return true;
-    case COOKED_EVENT_TYPE_KEY_UP:
-      mgr->OnKeyUp(event->keyCode);
-      return true;
-    case COOKED_EVENT_TYPE_BACK:
-      return mgr->OnBackKeyPressed();
-    default:
-      return false;
-  }
-}
 
 bool NativeEngine::InitDisplay() {
   if (mEglDisplay != EGL_NO_DISPLAY) {
